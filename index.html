@@ -1,0 +1,247 @@
+<html>
+
+<head>
+    <title>国土数値情報 土地利用細分メッシュ（パレットPNGタイル）</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src='https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.js'></script>
+    <link href='https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.css' rel='stylesheet' />
+    <script src="https://unpkg.com/pmtiles@2.11.0/dist/index.js"></script>
+    <style>
+        body {
+            margin: 0;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <script type="text/javascript">
+        // addProtocolの設定
+        let protocol = new pmtiles.Protocol();
+        maplibregl.addProtocol('pmtiles', (request) => {
+            return new Promise((resolve, reject) => {
+                const callback = (err, data) => {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve({ data });
+                    }
+                };
+                protocol.tile(request, callback);
+            });
+        });
+
+        // マップの初期化
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: 'std.json',
+            center: [139.903, 35.733],
+            zoom: 8.19,
+            minZoom: 4,
+            maxZoom: 11.99,
+            pitch: 0,
+            maxPitch: 85,
+            bearing: 0,
+            hash: true,
+            attributionControl: false
+        });
+
+        // ズーム・回転
+        map.addControl(new maplibregl.NavigationControl());
+
+        // フルスクリーンモードのオンオフ
+        map.addControl(new maplibregl.FullscreenControl());
+
+        // 現在位置表示
+        map.addControl(new maplibregl.GeolocateControl({
+            positionOptions: {
+                enableHighAccuracy: false
+            },
+            fitBoundsOptions: { maxZoom: 18 },
+            trackUserLocation: true,
+            showUserLocation: true
+        }));
+
+        // スケール表示
+        map.addControl(new maplibregl.ScaleControl({
+            maxWidth: 200,
+            unit: 'metric'
+        }));
+
+        // Attributionを折りたたみ表示
+        map.addControl(new maplibregl.AttributionControl({
+            compact: true
+        }));
+
+        // 3D地形コントロール表示
+        map.addControl(
+            new maplibregl.TerrainControl({
+                source: 'gsidem-terrain-rgb',
+                exaggeration: 1 // 標高を強調する倍率
+            })
+        );
+
+        // マップをロード
+        map.on("load", () => {
+            // 標高タイルソース
+            map.addSource("gsidem-terrain-rgb", {
+                type: 'raster-dem',
+                tiles: [
+                    'https://xs489works.xsrv.jp/raster-tiles/gsi/gsi-dem-terrain-rgb/{z}/{x}/{y}.png',
+                ],
+                attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html#dem" target="_blank">地理院タイル(標高タイル)</a>',
+                tileSize: 256
+            });
+
+            /*
+            // 標高タイルセット
+            map.setTerrain({ 'source': 'gsidem-terrain-rgb', 'exaggeration': 1 });
+            */
+
+            // Skyレイヤ
+            map.setSky({
+                "sky-color": "#199EF3",
+                "sky-horizon-blend": 0.7,
+                "horizon-color": "#f0f8ff",
+                "horizon-fog-blend": 0.8,
+                "fog-color": "#2c7fb8",
+                "fog-ground-blend": 0.9,
+                "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 1, 12, 0]
+            });
+
+        });
+
+        // PNGタイルからRGB値を取得
+        // 【参考1】https://gsj-seamless.jp/labs/datapng/gridpngtile.html
+        // 【参考2】https://gsj-seamless.jp/labs/datapng/sample/leaflet_shinsuishin1.html
+
+        /// ****************
+        // latLngToTile 緯度経度をタイル座標に変換する関数
+        //  latLng: 緯度経度オブジェクト（lat,lngフィールドを持ちます）
+        //  z: ズームレベル
+        //  戻り値: タイル座標オブジェクト（x, yフィールドを持ちます)
+        //    ※通常，地図ライブラリ内に同様の関数が用意されています．
+        /// ****************
+        function latLngToTile(lat, lng, z) {
+            const
+                w = Math.pow(2, (z === undefined) ? 0 : z) / 2,		// 世界全体のピクセル幅
+                yrad = Math.log(Math.tan(Math.PI * (90 + lat) / 360));
+
+            return { x: (lng / 180 + 1) * w, y: (1 - yrad / Math.PI) * w };
+        };
+
+        /// ****************
+        // getLegendItem 凡例情報，タイルURL，座標，ズームレベルを指定して凡例項目を取得する関数
+        //  legend: 凡例情報オブジェクト．r,g,b,titleを持つ凡例項目オブジェクトの配列
+        //	url: タイル画像のURLテンプレート．
+        //		ズームレベル，X, Y座標をそれぞれ{z},{x},{y}として埋め込む
+        //	ll: 緯度経度オブジェクト（lat,lngフィールドを持ちます）
+        //  z:　ズームレベル
+        //  invalid: 追加無効値を相当する数値で指定．デフォルトは指定なし
+        //  戻り値: 成功時に凡例項目オブジェクトを受け取るプロミス．該当するものがない場合はnullを受け取ります
+        /// ****************
+        function getLegendItem(legend, url, lat, lng, z, invalid = undefined) {
+            return new Promise(function (resolve, reject) {
+                const
+                    p = latLngToTile(lat, lng, z),
+                    x = Math.floor(p.x),			// タイルX座標
+                    y = Math.floor(p.y),			// タイルY座標
+                    i = (p.x - x) * 256,			// タイル内i座標
+                    j = (p.y - y) * 256,			// タイル内j座標
+                    img = new Image();
+
+                img.crossOrigin = 'anonymous';	// 画像ファイルからデータを取り出すために必要です
+                img.onload = function () {
+                    const
+                        canvas = document.createElement('canvas'),
+                        context = canvas.getContext('2d');
+                    let
+                        v,
+                        d;
+
+                    canvas.width = 1;
+                    canvas.height = 1;
+                    context.drawImage(img, i, j, 1, 1, 0, 0, 1, 1);
+                    d = context.getImageData(0, 0, 1, 1).data;
+                    if (d[3] !== 255) {
+                        v = null;
+                    } else {
+                        v = legend.find(o => o.r == d[0] && o.g == d[1] && o.b == d[2])
+                        //console.log("RGB:" + "R:" + o.r + "G:" + o.g + "B:" + o.b)
+                        // console.log("RGB:" + "R:" + v.r + "G:" + v.g + "B:" + v.b)
+                        // console.log("凡例情報:" + v.title)
+                    }
+                    resolve(v);
+                }
+                img.onerror = function () {
+                    resolve(null);
+                }
+                img.src = url.replace('{z}', z).replace('{y}', y).replace('{x}', x);
+                // console.log("img.src:" + img.src)
+            });
+        };
+
+        // 凡例情報セット
+        const legend_tochi = [
+            { r: 255, g: 255, b: 0, title: '田' },
+            { r: 255, g: 204, b: 153, title: 'その他の農用地' },
+            { r: 0, g: 170, b: 0, title: '森林' },
+            { r: 255, g: 153, b: 0, title: '荒地' },
+            { r: 255, g: 0, b: 0, title: '建物用地' },
+            { r: 140, g: 140, b: 140, title: '道路' },
+            { r: 180, g: 180, b: 180, title: '鉄道' },
+            { r: 200, g: 70, b: 15, title: 'その他の用地' },
+            { r: 0, g: 0, b: 255, title: '河川地及び湖沼' },
+            { r: 255, g: 255, b: 153, title: '海浜' },
+            { r: 0, g: 204, b: 255, title: '海水域' },
+            { r: 0, g: 255, b: 0, title: 'ゴルフ場' },
+        ];
+
+
+        // クリック時にポップアップ表示
+        map.on('click', function (e) {
+            // 表示されているレイヤーのIDを格納する配列
+            var rasterLayerIds = [];
+            const mapLayers = map.getStyle().layers;
+
+            // 全てのレイヤーを走査して、'type'が'raster'のものをフィルタリング
+            mapLayers.forEach(layer => {
+                // レイヤーのtypeプロパティを取得
+                const type = layer.type;
+                if (type === 'raster') {
+                    rasterLayerIds.push(layer.id);
+                }
+            });
+
+            console.log('表示されているレイヤー: ' + rasterLayerIds);
+
+            // 現在表示されているラスターレイヤをもとにポップアップ表示
+            RasterTileUrl = 'https://shiworks.xsrv.jp/raster-tiles/mlit-ksj/L03-b-21_dissolved/{z}/{x}/{y}.png';
+            legend = legend_tochi;
+
+            // クリック地点の座標を取得
+            const lng = e.lngLat.lng;
+            const lat = e.lngLat.lat;
+
+            getLegendItem(legend, RasterTileUrl, lat, lng, Math.trunc(map.getZoom())).then(function (v) {
+                let s = '';
+                let res = (v ? v.title : '取得できません');
+                if (rasterLayerIds == 'ksj-L03-b-21') {
+                    s = '<p>' + '土地利用種別' + '<br>' + '<b>' + res + '</b>' + '<br>' + '<a href=\https://www.google.com/maps?q=' + lat + "," + lng + "&hl=ja' target='_blank'>🌎Google Maps</a>" + '</p>';
+                }
+                new maplibregl.Popup()
+                    .setLngLat(e.lngLat)
+                    .setHTML(s)
+                    .addTo(map);
+            });
+        });
+    </script>
+</body>
+
+</html>
