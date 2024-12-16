@@ -123,7 +123,8 @@
 
         /// ****************
         // latLngToTile 緯度経度をタイル座標に変換する関数
-        //  latLng: 緯度経度オブジェクト（lat,lngフィールドを持ちます）
+        //  lat: 経度オブジェクト
+        //  lng: 緯度オブジェクト
         //  z: ズームレベル
         //  戻り値: タイル座標オブジェクト（x, yフィールドを持ちます)
         //    ※通常，地図ライブラリ内に同様の関数が用意されています．
@@ -141,7 +142,8 @@
         //  legend: 凡例情報オブジェクト．r,g,b,titleを持つ凡例項目オブジェクトの配列
         //	url: タイル画像のURLテンプレート．
         //		ズームレベル，X, Y座標をそれぞれ{z},{x},{y}として埋め込む
-        //	ll: 緯度経度オブジェクト（lat,lngフィールドを持ちます）
+        //  lat: 経度オブジェクト
+        //  lng: 緯度オブジェクト
         //  z:　ズームレベル
         //  invalid: 追加無効値を相当する数値で指定．デフォルトは指定なし
         //  戻り値: 成功時に凡例項目オブジェクトを受け取るプロミス．該当するものがない場合はnullを受け取ります
@@ -156,7 +158,7 @@
                     j = (p.y - y) * 256,			// タイル内j座標
                     img = new Image();
 
-                img.crossOrigin = 'anonymous';	// 画像ファイルからデータを取り出すために必要です
+                img.crossOrigin = 'anonymous';	// クロスオリジン対応
                 img.onload = function () {
                     const
                         canvas = document.createElement('canvas'),
@@ -173,9 +175,6 @@
                         v = null;
                     } else {
                         v = legend.find(o => o.r == d[0] && o.g == d[1] && o.b == d[2])
-                        //console.log("RGB:" + "R:" + o.r + "G:" + o.g + "B:" + o.b)
-                        // console.log("RGB:" + "R:" + v.r + "G:" + v.g + "B:" + v.b)
-                        // console.log("凡例情報:" + v.title)
                     }
                     resolve(v);
                 }
@@ -183,7 +182,6 @@
                     resolve(null);
                 }
                 img.src = url.replace('{z}', z).replace('{y}', y).replace('{x}', x);
-                // console.log("img.src:" + img.src)
             });
         };
 
