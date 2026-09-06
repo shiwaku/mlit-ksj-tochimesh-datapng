@@ -16,7 +16,7 @@
     "ksj-L03-b-21": {
       "type": "raster",
       "tiles": [
-        "https://shiworks.xsrv.jp/raster-tiles/mlit-ksj/L03-b-21_dissolved/{z}/{x}/{y}.png"
+        "https://shi-works.com/raster-tiles/mlit-ksj/L03-b-21_dissolved/{z}/{x}/{y}.png"
       ],
       "tileSize": 256,
       "minzoom": 4,
